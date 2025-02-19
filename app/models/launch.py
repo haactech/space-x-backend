@@ -1,11 +1,25 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict
 from datetime import datetime
 
+class PatchLinks(BaseModel):
+    small: Optional[str] = None
+    large: Optional[str] = None
+
+class RedditLinks(BaseModel):
+    campaign: Optional[str] = None
+    launch: Optional[str] = None
+    media: Optional[str] = None
+    recovery: Optional[str] = None
+
+class FlickrLinks(BaseModel):
+    small: List[str] = Field(default_factory=list)
+    original: List[str] = Field(default_factory=list)
+
 class LaunchLinks(BaseModel):
-    patch: Optional[Dict[str, str]] = Field(None, description="Mission patch links")
-    reddit: Optional[Dict[str, Optional[str]]] = Field(None, description="Reddit links")
-    flickr: Optional[Dict[str, List[str]]] = Field(None, description="Flickr image links")
+    patch: Optional[PatchLinks] = None
+    reddit: Optional[RedditLinks] = None
+    flickr: Optional[FlickrLinks] = None
     presskit: Optional[str] = None
     webcast: Optional[str] = None
     youtube_id: Optional[str] = None
@@ -35,49 +49,8 @@ class Fairings(BaseModel):
     ships: List[str] = Field(default_factory=list)
 
 class Launch(BaseModel):
-    fairings: Optional[Fairings] = None
-    links: LaunchLinks
-    static_fire_date_utc: Optional[str] = None
-    static_fire_date_unix: Optional[int] = None
-    net: Optional[bool] = None
-    window: Optional[int] = None
-    rocket: str = Field(..., description="Rocket ID reference")
-    success: Optional[bool] = None
-    failures: List[LaunchFailure] = Field(default_factory=list)
-    details: Optional[str] = None
-    crew: List[str] = Field(default_factory=list)
-    ships: List[str] = Field(default_factory=list)
-    capsules: List[str] = Field(default_factory=list)
-    payloads: List[str] = Field(default_factory=list)
-    launchpad: str
-    flight_number: int
-    name: str
-    date_utc: str
-    date_unix: int
-    date_local: str
-    date_precision: str
-    upcoming: bool
-    cores: List[Core]
-    auto_update: Optional[bool] = None
-    tbd: Optional[bool] = None
-    launch_library_id: Optional[str] = None
-    id: str
-
-class LaunchResponse(BaseModel):
-    docs: List[Launch]
-    totalDocs: int
-    offset: int
-    limit: int
-    totalPages: int
-    page: int
-    pagingCounter: int
-    hasPrevPage: bool
-    hasNextPage: bool
-    prevPage: Optional[int] = None
-    nextPage: Optional[int] = None
-
-class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "fairings": {
                     "reused": False,
@@ -151,3 +124,45 @@ class Config:
                 "id": "5eb87cd9ffd86e000604b32a"
             }
         }
+    )
+
+    fairings: Optional[Fairings] = None
+    links: LaunchLinks
+    static_fire_date_utc: Optional[str] = None
+    static_fire_date_unix: Optional[int] = None
+    net: Optional[bool] = None
+    window: Optional[int] = None
+    rocket: str = Field(..., description="Rocket ID reference")
+    success: Optional[bool] = None
+    failures: List[LaunchFailure] = Field(default_factory=list)
+    details: Optional[str] = None
+    crew: List[str] = Field(default_factory=list)
+    ships: List[str] = Field(default_factory=list)
+    capsules: List[str] = Field(default_factory=list)
+    payloads: List[str] = Field(default_factory=list)
+    launchpad: str
+    flight_number: int
+    name: str
+    date_utc: str
+    date_unix: int
+    date_local: str
+    date_precision: str
+    upcoming: bool
+    cores: List[Core]
+    auto_update: Optional[bool] = None
+    tbd: Optional[bool] = None
+    launch_library_id: Optional[str] = None
+    id: str
+
+class LaunchResponse(BaseModel):
+    docs: List[Launch]
+    totalDocs: int
+    offset: int
+    limit: int
+    totalPages: int
+    page: int
+    pagingCounter: int
+    hasPrevPage: bool
+    hasNextPage: bool
+    prevPage: Optional[int] = None
+    nextPage: Optional[int] = None

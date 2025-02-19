@@ -21,26 +21,46 @@ class DashboardService:
         """
         Fetch and aggregate dashboard data from SpaceX API
         """
-        rockets_data = await self.client.get_rockets()
-        launches_data = await self.client.get_launches()
-        starlink_data = await self.client.get_starlink_satellites()
+        try:
+            # Get rockets data
+            rockets_data = await self.client.get_rockets()
+            rockets = [Rocket(**rocket) for rocket in rockets_data]
 
-        rockets = [Rocket(**rocket) for rocket in rockets_data]
-        launches = [Launch(**launch) for launch in launches_data]
-        
-        starlink = []
-        for sat in starlink_data:
-            if isinstance(sat, dict):
-                starlink.append(StarlinkSatellite(**sat))
-            else:
-                continue
+            # Get launches data
+            launches_response = await self.client.get_launches(
+                options={
+                    "limit": 100,  
+                    "sort": {"date_utc": -1},
+                    "pagination": True
+                }
+            )
+            # Manejar la respuesta como diccionario o lista
+            launches_data = launches_response["docs"] if isinstance(launches_response, dict) else launches_response
+            launches = [Launch(**launch) for launch in launches_data]
 
-        return DashboardResponse(
-            summary_metrics=await self._get_summary_metrics(rockets, launches, starlink),
-            rocket_comparison=await self._get_rocket_comparisons(rockets, launches),  # Removed 's'
-            launch_metrics=await self._get_launch_metrics(launches),
-            starlink_data=await self._get_starlink_data(starlink)
-        )
+            # Get Starlink data
+            starlink_response = await self.client.get_starlink_satellites()
+            # Manejar la respuesta como diccionario o lista
+            starlink_data = starlink_response["docs"] if isinstance(starlink_response, dict) else starlink_response
+            starlink = []
+            
+            for sat in starlink_data:
+                if isinstance(sat, dict):
+                    try:
+                        starlink.append(StarlinkSatellite(**sat))
+                    except Exception as e:
+                        print(f"Error processing Starlink satellite: {e}")
+                        continue
+
+            return DashboardResponse(
+                summary_metrics=await self._get_summary_metrics(rockets, launches, starlink),
+                rocket_comparison=await self._get_rocket_comparisons(rockets, launches),  
+                launch_metrics=await self._get_launch_metrics(launches),
+                starlink_data=await self._get_starlink_data(starlink)
+            )
+        except Exception as e:
+            print(f"Error in get_dashboard_data: {str(e)}")
+            raise
 
     async def _get_summary_metrics(
         self, 
@@ -63,30 +83,35 @@ class DashboardService:
         rockets: List[Rocket], 
         launches: List[Launch]
     ) -> RocketComparison:
-        specifications = [
-            RocketSpecification(
-                name=rocket.name,
-                height_m=rocket.height.meters,
-                mass_kg=rocket.mass.kg,
-                success_rate=rocket.success_rate_pct,
-                cost_per_launch=rocket.cost_per_launch
-            )
-            for rocket in rockets
-        ]
-
+        specifications = []
         success_rates = []
+
         for rocket in rockets:
-            rocket_launches = [l for l in launches if l.rocket == rocket.id]
-            successful = len([l for l in rocket_launches if l.success])
-            
-            success_rates.append(
-                RocketSuccessRate(
-                    name=rocket.name,
-                    total_launches=len(rocket_launches),
-                    successful_launches=successful,
-                    rate=successful / len(rocket_launches) * 100 if rocket_launches else 0
+            try:
+                specifications.append(
+                    RocketSpecification(
+                        name=rocket.name,
+                        height_m=rocket.height.meters,
+                        mass_kg=rocket.mass.kg,
+                        success_rate=rocket.success_rate_pct,
+                        cost_per_launch=rocket.cost_per_launch
+                    )
                 )
-            )
+
+                rocket_launches = [l for l in launches if l.rocket == rocket.id]
+                successful = len([l for l in rocket_launches if l.success])
+                
+                success_rates.append(
+                    RocketSuccessRate(
+                        name=rocket.name,
+                        total_launches=len(rocket_launches),
+                        successful_launches=successful,
+                        rate=successful / len(rocket_launches) * 100 if rocket_launches else 0
+                    )
+                )
+            except Exception as e:
+                print(f"Error processing rocket {rocket.name}: {e}")
+                continue
 
         return RocketComparison(
             specifications=specifications,
@@ -98,18 +123,22 @@ class DashboardService:
         frequency_data = defaultdict(int)
 
         for launch in launches:
-            if launch.upcoming:
-                continue
+            try:
+                if launch.upcoming:
+                    continue
 
-            date = datetime.fromisoformat(launch.date_utc.replace("Z", "+00:00"))
-            year = date.year
-            
-            launches_by_year[year]["total"] += 1
-            if launch.success:
-                launches_by_year[year]["successful"] += 1
-            
-            month_key = date.strftime("%Y-%m")
-            frequency_data[month_key] += 1
+                date = datetime.fromisoformat(launch.date_utc.replace("Z", "+00:00"))
+                year = date.year
+                
+                launches_by_year[year]["total"] += 1
+                if launch.success:
+                    launches_by_year[year]["successful"] += 1
+                
+                month_key = date.strftime("%Y-%m")
+                frequency_data[month_key] += 1
+            except Exception as e:
+                print(f"Error processing launch {launch.id}: {e}")
+                continue
 
         yearly_data = [
             YearlyLaunchMetric(
@@ -141,28 +170,32 @@ class DashboardService:
         positions = []
 
         for satellite in starlink:
-            if satellite.version:
-                version_data = versions[satellite.version]
-                version_data["count"] += 1
-                
-                if satellite.height_km:
-                    version_data["height_sum"] += satellite.height_km
-                if satellite.velocity_kms:
-                    version_data["velocity_sum"] += satellite.velocity_kms
+            try:
+                if satellite.version:
+                    version_data = versions[satellite.version]
+                    version_data["count"] += 1
+                    
+                    if satellite.height_km:
+                        version_data["height_sum"] += satellite.height_km
+                    if satellite.velocity_kms:
+                        version_data["velocity_sum"] += satellite.velocity_kms
 
-            if all(v is not None for v in [
-                satellite.latitude,
-                satellite.longitude,
-                satellite.height_km
-            ]):
-                positions.append(
-                    SatellitePosition(
-                        id=satellite.id,
-                        latitude=satellite.latitude,
-                        longitude=satellite.longitude,
-                        height_km=satellite.height_km
+                if all(v is not None for v in [
+                    satellite.latitude,
+                    satellite.longitude,
+                    satellite.height_km
+                ]):
+                    positions.append(
+                        SatellitePosition(
+                            id=satellite.id,
+                            latitude=satellite.latitude,
+                            longitude=satellite.longitude,
+                            height_km=satellite.height_km
+                        )
                     )
-                )
+            except Exception as e:
+                print(f"Error processing satellite {satellite.id}: {e}")
+                continue
 
         orbital_parameters = [
             OrbitalParameters(
