@@ -1,4 +1,3 @@
-# api/dashboard.py
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
 from app.services.dashboard import DashboardService
@@ -19,6 +18,10 @@ async def get_dashboard_data(
     end_year: Optional[int] = Query(None, description="Filter launches up to this year", alias="endYear"),
     limit: int = Query(100, description="Number of launches to retrieve per page"),
     page: int = Query(1, description="Pagination page number (1-based)"),
+    starlink_page: int = Query(1, description="starlink page number (1-based)"),
+    starlink_limit: int = Query(300, description="starlink limit number (1-based)"),
+    starlink_version: Optional[str] = Query(None, description="Filter launches by starlink version"),
+
     spacex_client: SpaceXClient = Depends()
 ) -> DashboardResponse:
     """
@@ -31,7 +34,10 @@ async def get_dashboard_data(
             start_year=start_year,
             end_year=end_year,
             limit=limit,
-            page=page
+            page=page,
+            starlink_page=starlink_page,
+            starlink_limit=starlink_limit,
+            starlink_version=starlink_version
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching dashboard data: {e}")

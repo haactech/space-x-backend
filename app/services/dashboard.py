@@ -1,4 +1,3 @@
-# services/dashboard.py
 from datetime import datetime
 from typing import Dict, List, Optional
 from collections import defaultdict
@@ -24,7 +23,10 @@ class DashboardService:
         start_year: Optional[int] = None,
         end_year: Optional[int] = None,
         limit: int = 100,
-        page: int = 1
+        page: int = 1,
+        starlink_page: int = 1,
+        starlink_limit: int = 300,
+        starlink_version: Optional[str] = None,
     ) -> DashboardResponse:
         """
         Fetch and aggregate dashboard data from SpaceX API with optional filters.
@@ -73,27 +75,42 @@ class DashboardService:
             )
             launches = [Launch(**launch) for launch in launches_data]
 
-            # Obtener datos de Starlink (en este ejemplo no filtramos, pero podrías hacerlo)
-            starlink_response = await self.client.get_starlink_satellites()
-            starlink_data = (
-                starlink_response["docs"] 
-                if isinstance(starlink_response, dict) else starlink_response
+            starlink_query = {}
+            if starlink_version:
+                starlink_query["version"] = starlink_version
+                
+            starlink_options = {
+                "page": starlink_page,
+                "limit": starlink_limit,
+                "sort": {"launch_date_utc": -1},
+                "pagination": True
+            }
+
+            starlink_response = await self.client.get_starlink_satellites(
+                query=starlink_query,
+                options=starlink_options
             )
+
+            if isinstance(starlink_response, dict) and "docs" in starlink_response:
+                starlink_data = starlink_response["docs"]
+            else: 
+                starlink_data = starlink_response
             starlink = []
+
             for sat in starlink_data:
                 if isinstance(sat, dict):
                     try:
                         starlink.append(StarlinkSatellite(**sat))
                     except Exception as e:
                         print(f"Error processing Starlink satellite: {e}")
-                        continue
+                    
+            starlink_processed = await self._get_starlink_data(starlink)
 
-            # Procesar toda la información en las funciones internas
             return DashboardResponse(
                 summary_metrics=await self._get_summary_metrics(rockets, launches, starlink),
                 rocket_comparison=await self._get_rocket_comparisons(rockets, launches),
                 launch_metrics=await self._get_launch_metrics(launches),
-                starlink_data=await self._get_starlink_data(starlink)
+                starlink_data= starlink_processed
             )
         except Exception as e:
             print(f"Error in get_dashboard_data: {str(e)}")
