@@ -155,14 +155,29 @@ class Launch(BaseModel):
     id: str
 
 class LaunchResponse(BaseModel):
-    docs: List[Launch]
-    totalDocs: int
-    offset: int
-    limit: int
-    totalPages: int
-    page: int
-    pagingCounter: int
-    hasPrevPage: bool
-    hasNextPage: bool
+    docs: List[Launch] = Field(default_factory=list)
+    totalDocs: int = Field(default=0)
+    offset: int = Field(default=0)
+    limit: int = Field(default=0)
+    totalPages: int = Field(default=0)
+    page: int = Field(default=0)
+    pagingCounter: int = Field(default=0)
+    hasPrevPage: bool = Field(default=False)
+    hasNextPage: bool = Field(default=False)
     prevPage: Optional[int] = None
     nextPage: Optional[int] = None
+
+    @classmethod
+    def from_api_response(cls, response: List[dict]):
+        """
+        Create LaunchResponse from API response when it's a list
+        """
+        if isinstance(response, list):
+            return cls(
+                docs=response,
+                totalDocs=len(response),
+                limit=len(response),
+                totalPages=1,
+                page=1
+            )
+        return cls(**response)

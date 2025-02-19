@@ -1,5 +1,6 @@
+# services/dashboard.py
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 from collections import defaultdict
 
 from app.models.dashboard import (
@@ -8,42 +9,77 @@ from app.models.dashboard import (
     RocketSuccessRate, YearlyLaunchMetric, LaunchFrequency,
     OrbitalParameters, SatellitePosition
 )
-from app.models.launch import Launch, LaunchResponse
+from app.models.launch import Launch
 from app.models.rocket import Rocket
-from app.models.startlink import StarlinkResponse, StarlinkSatellite
+from app.models.startlink import StarlinkSatellite
 from app.clients.spacex import SpaceXClient
 
 class DashboardService:
     def __init__(self, spacex_client: SpaceXClient):
         self.client = spacex_client
 
-    async def get_dashboard_data(self) -> DashboardResponse:
+    async def get_dashboard_data(
+        self,
+        rocket_id: Optional[str] = None,
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
+        limit: int = 100,
+        page: int = 1
+    ) -> DashboardResponse:
         """
-        Fetch and aggregate dashboard data from SpaceX API
+        Fetch and aggregate dashboard data from SpaceX API with optional filters.
         """
         try:
-            # Get rockets data
+            # Construir la query dinámica para lanzamientos
+            launch_query = {}
+            
+            # Filtrar por rocket_id (si se provee)
+            if rocket_id:
+                launch_query["rocket"] = rocket_id
+
+            # Filtrar por rango de años (si se provee)
+            # Se utiliza formato 'YYYY-MM-DD' para la comparación
+            # con un campo 'date_utc' en la base de datos.
+            if start_year or end_year:
+                date_filter = {}
+                if start_year:
+                    date_filter["$gte"] = f"{start_year}-01-01T00:00:00.000Z"
+                if end_year:
+                    date_filter["$lte"] = f"{end_year}-12-31T23:59:59.999Z"
+                launch_query["date_utc"] = date_filter
+
+            # Construir las opciones de paginación y orden
+            launch_options = {
+                "limit": limit,
+                "page": page,
+                "sort": {"date_utc": -1},
+                "pagination": True
+            }
+            if launch_query:
+                launch_options["query"] = launch_query
+
+            # Obtener lista de cohetes
             rockets_data = await self.client.get_rockets()
             rockets = [Rocket(**rocket) for rocket in rockets_data]
 
-            # Get launches data
+            # Obtener lanzamientos con las opciones y filtros
             launches_response = await self.client.get_launches(
-                options={
-                    "limit": 100,  
-                    "sort": {"date_utc": -1},
-                    "pagination": True
-                }
+                query=launch_query,
+                options=launch_options
             )
-            # Manejar la respuesta como diccionario o lista
-            launches_data = launches_response["docs"] if isinstance(launches_response, dict) else launches_response
+            launches_data = (
+                launches_response["docs"] 
+                if isinstance(launches_response, dict) else launches_response
+            )
             launches = [Launch(**launch) for launch in launches_data]
 
-            # Get Starlink data
+            # Obtener datos de Starlink (en este ejemplo no filtramos, pero podrías hacerlo)
             starlink_response = await self.client.get_starlink_satellites()
-            # Manejar la respuesta como diccionario o lista
-            starlink_data = starlink_response["docs"] if isinstance(starlink_response, dict) else starlink_response
+            starlink_data = (
+                starlink_response["docs"] 
+                if isinstance(starlink_response, dict) else starlink_response
+            )
             starlink = []
-            
             for sat in starlink_data:
                 if isinstance(sat, dict):
                     try:
@@ -52,9 +88,10 @@ class DashboardService:
                         print(f"Error processing Starlink satellite: {e}")
                         continue
 
+            # Procesar toda la información en las funciones internas
             return DashboardResponse(
                 summary_metrics=await self._get_summary_metrics(rockets, launches, starlink),
-                rocket_comparison=await self._get_rocket_comparisons(rockets, launches),  
+                rocket_comparison=await self._get_rocket_comparisons(rockets, launches),
                 launch_metrics=await self._get_launch_metrics(launches),
                 starlink_data=await self._get_starlink_data(starlink)
             )
@@ -73,7 +110,10 @@ class DashboardService:
         
         return SummaryMetrics(
             total_launches=len(launches),
-            success_rate=len(successful_launches) / len(completed_launches) * 100 if completed_launches else 0,
+            success_rate=(
+                len(successful_launches) / len(completed_launches) * 100 
+                if completed_launches else 0
+            ),
             active_rockets=len([r for r in rockets if r.active]),
             total_starlink_satellites=len(starlink)
         )
@@ -106,7 +146,10 @@ class DashboardService:
                         name=rocket.name,
                         total_launches=len(rocket_launches),
                         successful_launches=successful,
-                        rate=successful / len(rocket_launches) * 100 if rocket_launches else 0
+                        rate=(
+                            successful / len(rocket_launches) * 100 
+                            if rocket_launches else 0
+                        )
                     )
                 )
             except Exception as e:
@@ -145,7 +188,10 @@ class DashboardService:
                 year=year,
                 total=data["total"],
                 successful=data["successful"],
-                rate=data["successful"] / data["total"] * 100 if data["total"] > 0 else 0
+                rate=(
+                    data["successful"] / data["total"] * 100 
+                    if data["total"] > 0 else 0
+                )
             )
             for year, data in launches_by_year.items()
         ]
@@ -201,8 +247,12 @@ class DashboardService:
             OrbitalParameters(
                 version=version,
                 count=data["count"],
-                average_height_km=data["height_sum"] / data["count"] if data["count"] > 0 else 0,
-                average_velocity_kms=data["velocity_sum"] / data["count"] if data["count"] > 0 else 0
+                average_height_km=(
+                    data["height_sum"] / data["count"] if data["count"] > 0 else 0
+                ),
+                average_velocity_kms=(
+                    data["velocity_sum"] / data["count"] if data["count"] > 0 else 0
+                )
             )
             for version, data in versions.items()
         ]
