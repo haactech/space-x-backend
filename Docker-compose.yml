@@ -1,4 +1,3 @@
-# docker-compose.yml
 version: '3.8'
 
 services:
@@ -14,16 +13,3 @@ services:
       - API_V1_STR=/api/v1
       - PROJECT_NAME=SpaceX Dashboard API
       - SPACEX_API_URL=https://api.spacexdata.com/v4
-      - AWS_ACCESS_KEY_ID=dummy
-      - AWS_SECRET_ACCESS_KEY=dummy
-      - AWS_REGION=us-east-1
-      - S3_BUCKET=dummy
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"

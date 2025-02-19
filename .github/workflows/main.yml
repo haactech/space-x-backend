@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Deploy SpaceX Dashboard to EC2
 
 on:
   push:
@@ -40,7 +40,12 @@ jobs:
         EC2_HOST: ${{ secrets.EC2_HOST }}
       run: |
         ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
-          mkdir -p ~/motorcycle-shop &&
+          # Detener y eliminar contenedores existentes
+          docker-compose -f ~/motorcycle-shop/docker-compose.yml down || true
+          docker system prune -f
+          
+          # Crear directorio para el nuevo proyecto
+          mkdir -p ~/spacex-dashboard &&
           sudo apt-get update &&
           sudo apt-get install -y docker.io docker-compose &&
           sudo usermod -aG docker ubuntu
@@ -50,13 +55,23 @@ jobs:
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
       run: |
-        scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem -r ./* ubuntu@$EC2_HOST:~/motorcycle-shop/
+        # Limpiar directorio anterior si existe y copiar nuevos archivos
         ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
-          cd ~/motorcycle-shop &&
+          rm -rf ~/spacex-dashboard/*
+        '
+        
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem -r ./* ubuntu@$EC2_HOST:~/spacex-dashboard/
+        
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
+          cd ~/spacex-dashboard &&
           if [ -f "docker-compose.yml" ]; then
+            # Eliminar contenedores anteriores y construir nuevos
             docker-compose down || true
             docker-compose build --no-cache &&
             docker-compose up -d
+            
+            # Verificar que los contenedores están corriendo
+            docker ps
           else
             echo "docker-compose.yml not found"
             ls -la
