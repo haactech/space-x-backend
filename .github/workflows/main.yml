@@ -1,0 +1,64 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read 
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.11'
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2 
+      with:
+        role-to-assume: arn:aws:iam::048916985380:role/GitHubActionsDeployRole
+        aws-region: us-east-1 
+
+    - name: Create SSH config
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key.pem
+        chmod 600 ~/.ssh/deploy_key.pem
+
+    - name: Prepare EC2 instance
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+      run: |
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
+          mkdir -p ~/motorcycle-shop &&
+          sudo apt-get update &&
+          sudo apt-get install -y docker.io docker-compose &&
+          sudo usermod -aG docker ubuntu
+        '
+
+    - name: Deploy to EC2
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+      run: |
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem -r ./* ubuntu@$EC2_HOST:~/motorcycle-shop/
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key.pem ubuntu@$EC2_HOST '
+          cd ~/motorcycle-shop &&
+          if [ -f "docker-compose.yml" ]; then
+            docker-compose down || true
+            docker-compose build --no-cache &&
+            docker-compose up -d
+          else
+            echo "docker-compose.yml not found"
+            ls -la
+          fi
+        '
